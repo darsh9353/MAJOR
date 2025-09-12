@@ -2,6 +2,29 @@
 
 ## Common Backend Issues and Solutions
 
+### 0. Proxy Errors in Development Mode
+
+**Symptoms:**
+- Error messages like `Proxy error: Could not proxy request /api/statistics from localhost:3000 to http://localhost:5000/`
+- ECONNREFUSED errors in the console
+- Frontend can't connect to backend API endpoints
+
+**Solutions:**
+1. **Use the test_solution.bat script:**
+   ```bash
+   .\test_solution.bat
+   ```
+   This script starts the backend first, waits for it to initialize, and then starts the frontend.
+
+2. **Increase wait time:**
+   - If you still see proxy errors, edit `test_solution.bat` and increase the timeout value
+   - Default is 15 seconds, try 20 or 30 seconds if needed
+
+3. **Start servers manually:**
+   - Start backend first: `python app.py`
+   - Wait until you see "Running on http://127.0.0.1:5000"
+   - Then start frontend in a new terminal: `npm start`
+
 ### 1. Resumes Not Saving to Database
 
 **Symptoms:**

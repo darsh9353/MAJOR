@@ -55,7 +55,21 @@ A comprehensive AI-powered resume screening application that can process 1000+ r
 ## 🚀 Installation & Setup
 
 ### Quick Start (Windows)
-If you're on Windows, you can use the provided batch file:
+If you're on Windows, you can use the provided batch files:
+
+#### Production Mode
+```bash
+build_and_run.bat
+```
+This will build the React frontend for production and start the Flask server.
+
+#### Development Mode
+```bash
+test_solution.bat
+```
+This will start both the backend and frontend servers in development mode with proper timing to avoid proxy errors.
+
+#### Backend Only
 ```bash
 start_backend.bat
 ```
