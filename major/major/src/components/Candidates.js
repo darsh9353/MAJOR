@@ -1,16 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Search, 
-  Filter, 
   Mail, 
   Star, 
   User, 
   Phone, 
-  FileText,
   ChevronLeft,
   ChevronRight,
   Eye,
-  Edit,
   X,
   Trash2
 } from 'lucide-react';
@@ -26,6 +23,8 @@ const Candidates = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [minScoreFilter, setMinScoreFilter] = useState(0);
+  const [jobRoleFilter, setJobRoleFilter] = useState('');
+  const [jobRoles, setJobRoles] = useState([]);
   const [selectedCandidate, setSelectedCandidate] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [emailCount, setEmailCount] = useState(5);
@@ -54,18 +53,25 @@ const Candidates = () => {
     }
   };
 
-  useEffect(() => {
-    fetchCandidates();
-  }, [currentPage, statusFilter, minScoreFilter]);
+  const fetchJobRoles = useCallback(async () => {
+    try {
+      const response = await axios.get('/api/candidates/job-roles');
+      setJobRoles(response.data || []);
+    } catch (error) {
+      console.error('Error fetching job roles:', error);
+    }
+  }, []);
 
-  const fetchCandidates = async () => {
+  const fetchCandidates = useCallback(async () => {
     try {
       setLoading(true);
       const params = {
         page: currentPage,
         per_page: 20,
         status: statusFilter,
-        min_score: minScoreFilter
+        min_score: minScoreFilter,
+        job_requirements_id: jobRoleFilter,
+        search: searchTerm
       };
 
       const response = await axios.get('/api/candidates', { params });
@@ -78,7 +84,12 @@ const Candidates = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentPage, statusFilter, minScoreFilter, jobRoleFilter, searchTerm]);
+
+  useEffect(() => {
+    fetchJobRoles();
+    fetchCandidates();
+  }, [fetchCandidates, fetchJobRoles]);
 
   const handleSearch = () => {
     setCurrentPage(1);
@@ -179,7 +190,7 @@ const Candidates = () => {
 
       {/* Filters */}
       <div className="bg-white rounded-lg shadow-md p-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           {/* Search */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -191,6 +202,20 @@ const Candidates = () => {
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             />
           </div>
+
+          {/* Job Role Filter */}
+          <select
+            value={jobRoleFilter}
+            onChange={(e) => setJobRoleFilter(e.target.value)}
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+          >
+            <option value="">All Job Roles</option>
+            {jobRoles.map((role) => (
+              <option key={role.id} value={role.id}>
+                {role.title} ({role.candidate_count})
+              </option>
+            ))}
+          </select>
 
           {/* Status Filter */}
           <select
@@ -242,6 +267,9 @@ const Candidates = () => {
                       Candidate
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Job Role
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Contact
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -279,6 +307,14 @@ const Candidates = () => {
                               {candidate.filename}
                             </div>
                           </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">
+                          {candidate.job_title || 'Unknown Role'}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          ID: {candidate.job_requirements_id || 'N/A'}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -428,6 +464,7 @@ const Candidates = () => {
                   <p><strong>Name:</strong> {selectedCandidate.name || 'Unknown'}</p>
                   <p><strong>Email:</strong> {selectedCandidate.email}</p>
                   <p><strong>Phone:</strong> {selectedCandidate.phone || 'Not provided'}</p>
+                  <p><strong>Job Role:</strong> {selectedCandidate.job_title || 'Unknown Role'}</p>
                 </div>
                 
                 <div>

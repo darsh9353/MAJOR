@@ -73,6 +73,7 @@ class Candidate(db.Model):
     screening_date = db.Column(db.DateTime)
     email_sent = db.Column(db.Boolean, default=False)
     email_sent_date = db.Column(db.DateTime)
+    job_requirements_id = db.Column(db.Integer, db.ForeignKey('job_requirements.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class JobRequirements(db.Model):
@@ -358,7 +359,8 @@ def upload_resumes():
                         experience_years=screening_result['experience'],
                         score=screening_result['score'],
                         status='screened',
-                        screening_date=datetime.utcnow()
+                        screening_date=datetime.utcnow(),
+                        job_requirements_id=job_requirements_id
                     )
                     
                     db.session.add(candidate)
@@ -408,6 +410,8 @@ def get_candidates():
         per_page = request.args.get('per_page', 50, type=int)
         status = request.args.get('status', '')
         min_score = request.args.get('min_score', 0, type=float)
+        job_requirements_id = request.args.get('job_requirements_id', '', type=str)
+        search_term = request.args.get('search', '')
         
         query = Candidate.query
         
@@ -416,6 +420,18 @@ def get_candidates():
         
         if min_score > 0:
             query = query.filter(Candidate.score >= min_score)
+        
+        if job_requirements_id and job_requirements_id != '':
+            query = query.filter(Candidate.job_requirements_id == job_requirements_id)
+        
+        if search_term:
+            query = query.filter(
+                db.or_(
+                    Candidate.name.ilike(f'%{search_term}%'),
+                    Candidate.email.ilike(f'%{search_term}%'),
+                    Candidate.filename.ilike(f'%{search_term}%')
+                )
+            )
         
         # Order by score descending
         query = query.order_by(Candidate.score.desc())
@@ -434,6 +450,13 @@ def get_candidates():
                 skills = json.loads(candidate.skills) if candidate.skills else []
             except Exception:
                 skills = []
+            
+            # Get job requirements title
+            job_title = "Unknown Role"
+            if candidate.job_requirements_id:
+                job_req = JobRequirements.query.get(candidate.job_requirements_id)
+                if job_req:
+                    job_title = job_req.title
                 
             result['candidates'].append({
                 'id': candidate.id,
@@ -446,6 +469,8 @@ def get_candidates():
                 'score': candidate.score,
                 'status': candidate.status,
                 'email_sent': candidate.email_sent,
+                'job_requirements_id': candidate.job_requirements_id,
+                'job_title': job_title,
                 'created_at': candidate.created_at.isoformat() if candidate.created_at else None
             })
         
@@ -631,6 +656,32 @@ def delete_candidate(candidate_id):
         return jsonify({'message': 'Candidate deleted successfully'})
     except Exception as e:
         logger.error(f"Error in delete_candidate: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/candidates/job-roles', methods=['GET'])
+def get_candidate_job_roles():
+    """Get unique job roles from candidates"""
+    try:
+        # Get distinct job_requirements_id from candidates
+        distinct_job_ids = db.session.query(Candidate.job_requirements_id).distinct().all()
+        job_ids = [job_id[0] for job_id in distinct_job_ids if job_id[0] is not None]
+        
+        # Get job requirements details
+        job_roles = []
+        for job_id in job_ids:
+            job_req = JobRequirements.query.get(job_id)
+            if job_req:
+                # Count candidates for this job role
+                candidate_count = Candidate.query.filter(Candidate.job_requirements_id == job_id).count()
+                job_roles.append({
+                    'id': job_req.id,
+                    'title': job_req.title,
+                    'candidate_count': candidate_count
+                })
+        
+        return jsonify(job_roles)
+    except Exception as e:
+        logger.error(f"Error in get_candidate_job_roles: {e}")
         return jsonify({'error': str(e)}), 500
 
 # Create database tables
