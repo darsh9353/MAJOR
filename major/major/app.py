@@ -252,7 +252,8 @@ class EmailService:
         self.sender_email = SENDER_EMAIL
         self.sender_password = SENDER_PASSWORD
     
-    def send_interview_email(self, candidate_email, candidate_name, company_name="Our Company"):
+    def send_interview_email(self, candidate_email, candidate_name, company_name="Our Company", 
+                            custom_message="", include_score=False, candidate_score=None):
         """Send interview invitation email to candidate"""
         try:
             msg = MIMEMultipart()
@@ -260,18 +261,30 @@ class EmailService:
             msg['To'] = candidate_email
             msg['Subject'] = f"Interview Invitation - {company_name}"
             
-            body = f"""
-            Dear {candidate_name},
+            # Build email body
+            body = f"""Dear {candidate_name},
+
+We are pleased to inform you that your application has been selected for further consideration.
+
+You have been shortlisted for an interview with {company_name}. Our team will contact you shortly to schedule the interview."""
             
-            We are pleased to inform you that your application has been selected for further consideration.
+            # Add score information if requested
+            if include_score and candidate_score is not None:
+                score_percentage = (candidate_score * 100)
+                body += f"\n\nYour application scored {score_percentage:.1f}% in our screening process, which demonstrates a strong match with our requirements."
             
-            You have been shortlisted for an interview with {company_name}. Our team will contact you shortly to schedule the interview.
+            # Add custom message if provided
+            if custom_message and custom_message.strip():
+                body += f"\n\n{custom_message}"
             
-            Please ensure you are available for the interview and have all necessary documents ready.
-            
-            Best regards,
-            {company_name} HR Team
-            """
+            body += f"""
+
+Please ensure you are available for the interview and have all necessary documents ready.
+
+We look forward to speaking with you soon.
+
+Best regards,
+{company_name} HR Team"""
             
             msg.attach(MIMEText(body, 'plain'))
             
@@ -283,9 +296,10 @@ class EmailService:
             server.sendmail(self.sender_email, candidate_email, text)
             server.quit()
             
+            logger.info(f"Successfully sent email to {candidate_email}")
             return True
         except Exception as e:
-            logger.error(f"Error sending email: {e}")
+            logger.error(f"Error sending email to {candidate_email}: {e}")
             return False
 
 # Initialize services
@@ -488,6 +502,20 @@ def send_emails():
         num_candidates = data.get('num_candidates', 10)
         min_score = data.get('min_score', 0.5)
         
+        # Get email settings from request
+        email_settings = data.get('email_settings', {})
+        company_name = email_settings.get('companyName', COMPANY_NAME)
+        custom_message = email_settings.get('customMessage', '')
+        include_score = email_settings.get('includeScore', False)
+        
+        # Validate email configuration
+        if not SENDER_EMAIL or SENDER_EMAIL == 'your-email@gmail.com':
+            return jsonify({
+                'error': 'Email not configured. Please set SENDER_EMAIL and SENDER_PASSWORD in your .env file or config.py',
+                'sent_count': 0,
+                'failed_count': 0
+            }), 400
+        
         # Get top candidates
         candidates = Candidate.query.filter(
             Candidate.score >= min_score,
@@ -496,32 +524,52 @@ def send_emails():
         
         sent_count = 0
         failed_count = 0
+        failed_emails = []
         
         for candidate in candidates:
-            if candidate.email:
-                success = email_service.send_interview_email(
-                    candidate.email, 
-                    candidate.name or "Candidate"
-                )
-                
-                if success:
-                    candidate.email_sent = True
-                    candidate.email_sent_date = datetime.utcnow()
-                    candidate.status = 'selected'
-                    sent_count += 1
-                else:
+            if candidate.email and candidate.email != 'no-email@example.com':
+                try:
+                    success = email_service.send_interview_email(
+                        candidate_email=candidate.email,
+                        candidate_name=candidate.name or "Candidate",
+                        company_name=company_name,
+                        custom_message=custom_message,
+                        include_score=include_score,
+                        candidate_score=candidate.score
+                    )
+                    
+                    if success:
+                        candidate.email_sent = True
+                        candidate.email_sent_date = datetime.utcnow()
+                        candidate.status = 'selected'
+                        sent_count += 1
+                    else:
+                        failed_count += 1
+                        failed_emails.append(candidate.email)
+                except Exception as e:
+                    logger.error(f"Error sending email to {candidate.email}: {e}")
                     failed_count += 1
+                    failed_emails.append(candidate.email)
+            else:
+                failed_count += 1
+                logger.warning(f"Skipping candidate {candidate.id} - invalid email address")
         
         db.session.commit()
         
-        return jsonify({
+        response = {
             'message': f'Successfully sent {sent_count} emails, {failed_count} failed',
             'sent_count': sent_count,
             'failed_count': failed_count
-        })
+        }
+        
+        if failed_emails:
+            response['failed_emails'] = failed_emails[:5]  # Include first 5 failed emails for debugging
+        
+        return jsonify(response)
     
     except Exception as e:
         logger.error(f"Error in send_emails: {e}")
+        db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/job-requirements', methods=['GET', 'POST'])

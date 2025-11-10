@@ -74,19 +74,43 @@ const EmailSender = () => {
       return;
     }
 
+    if (eligibleCandidates.length === 0) {
+      toast.error('No eligible candidates to email');
+      return;
+    }
+
     setSending(true);
     try {
-          const payload = {
-            num_candidates: numCandidates,
-            min_score: minScore === 0 ? 0 : minScore
-          };
-          const response = await axios.post('/api/send-emails', payload);
+      const payload = {
+        num_candidates: numCandidates,
+        min_score: minScore === 0 ? 0 : minScore,
+        email_settings: {
+          companyName: emailSettings.companyName || 'Our Company',
+          customMessage: emailSettings.customMessage || '',
+          includeScore: emailSettings.includeScore || false
+        }
+      };
+      
+      const response = await axios.post('/api/send-emails', payload);
 
-      toast.success(`Successfully sent ${response.data.sent_count} emails`);
+      if (response.data.error) {
+        toast.error(response.data.error);
+      } else {
+        toast.success(
+          `Successfully sent ${response.data.sent_count} email${response.data.sent_count !== 1 ? 's' : ''}` +
+          (response.data.failed_count > 0 ? `, ${response.data.failed_count} failed` : '')
+        );
+        
+        if (response.data.failed_count > 0 && response.data.failed_emails) {
+          console.warn('Failed emails:', response.data.failed_emails);
+        }
+      }
+      
       fetchCandidates();
       fetchStats();
     } catch (error) {
-      toast.error('Failed to send emails');
+      const errorMessage = error.response?.data?.error || error.message || 'Failed to send emails';
+      toast.error(errorMessage);
       console.error('Error sending emails:', error);
     } finally {
       setSending(false);
@@ -148,6 +172,25 @@ const EmailSender = () => {
               <p className="text-sm font-medium text-gray-600">Emails Sent</p>
               <p className="text-2xl font-bold text-gray-900">{stats.emails_sent}</p>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Email Configuration Info */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+        <div className="flex items-start">
+          <AlertCircle className="h-5 w-5 text-blue-600 mr-3 mt-0.5" />
+          <div className="flex-1">
+            <h3 className="text-sm font-semibold text-blue-900 mb-1">Email Configuration Required</h3>
+            <p className="text-sm text-blue-800 mb-2">
+              To send real emails, configure your SMTP settings in <code className="bg-blue-100 px-1 rounded">config.py</code> or <code className="bg-blue-100 px-1 rounded">.env</code> file:
+            </p>
+            <ul className="text-sm text-blue-800 list-disc list-inside space-y-1">
+              <li><code>SENDER_EMAIL</code> - Your email address</li>
+              <li><code>SENDER_PASSWORD</code> - Your email password or app password (for Gmail, use App Password)</li>
+              <li><code>SMTP_SERVER</code> - SMTP server (default: smtp.gmail.com)</li>
+              <li><code>SMTP_PORT</code> - SMTP port (default: 587)</li>
+            </ul>
           </div>
         </div>
       </div>
@@ -360,27 +403,33 @@ const EmailSender = () => {
         <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
           <div className="space-y-4">
             <div>
-              <strong>Subject:</strong> Interview Invitation - {emailSettings.companyName}
+              <strong className="text-gray-900">Subject:</strong>
+              <div className="mt-1 text-gray-700">Interview Invitation - {emailSettings.companyName || 'Our Company'}</div>
             </div>
             <div>
-              <strong>Body:</strong>
-              <div className="mt-2 text-gray-700 whitespace-pre-line">
+              <strong className="text-gray-900">Body:</strong>
+              <div className="mt-2 text-gray-700 whitespace-pre-line bg-white p-4 rounded border border-gray-300 font-mono text-sm">
                 Dear [Candidate Name],
 
-                We are pleased to inform you that your application has been selected for further consideration.
+We are pleased to inform you that your application has been selected for further consideration.
 
-                You have been shortlisted for an interview with {emailSettings.companyName}. Our team will contact you shortly to schedule the interview.
+You have been shortlisted for an interview with {emailSettings.companyName || 'Our Company'}. Our team will contact you shortly to schedule the interview.{emailSettings.includeScore && '\n\nYour application scored [Score]% in our screening process, which demonstrates a strong match with our requirements.'}{emailSettings.customMessage && emailSettings.customMessage.trim() ? `\n\n${emailSettings.customMessage}` : ''}
 
-                {emailSettings.includeScore && 'Your application scored highly in our screening process.'}
+Please ensure you are available for the interview and have all necessary documents ready.
 
-                {emailSettings.customMessage && `\n${emailSettings.customMessage}`}
+We look forward to speaking with you soon.
 
-                Please ensure you are available for the interview and have all necessary documents ready.
-
-                Best regards,
-                {emailSettings.companyName} HR Team
+Best regards,
+{emailSettings.companyName || 'Our Company'} HR Team
               </div>
             </div>
+            {eligibleCandidates.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-gray-300">
+                <p className="text-sm text-gray-600">
+                  <strong>Note:</strong> This email will be sent to {Math.min(numCandidates, eligibleCandidates.length)} candidate{Math.min(numCandidates, eligibleCandidates.length) !== 1 ? 's' : ''} with scores ≥ {(minScore * 100).toFixed(0)}%
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -389,3 +438,4 @@ const EmailSender = () => {
 };
 
 export default EmailSender;
+
